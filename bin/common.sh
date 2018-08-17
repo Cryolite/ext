@@ -33,7 +33,7 @@ while (( $# > 0 )); do
     ;;
   esac
 done
-set -- "${new_args[@]}"
+set -- ${new_args[@]+"${new_args[@]}"}
 unset new_args
 if [[ ${debug-no} == yes ]]; then
   set -x
