@@ -16,11 +16,10 @@ function print_usage ()
 Usage: install [OPTION]...
 Install libbacktrace.
 
-  --prefix=<DIR>             Pass `--prefix=<DIR>' on to libbacktrace
-                             `configure' script.
-  --source-dir=<DIR>         The source directory (default: a temporary
-                             directory that will be deleted when this script
-                             exits).
+  --prefix=<PREFIX>          Pass `--prefix=<PREFIX>' on to libbacktrace
+                             `configure' script (default: `/usr/local').
+  --source-dir=<DIR>         The source directory (default:
+                             `<PREFIX>/src/libbacktrace').
   --clobber-source-dir       Delete the source directory before the source
                              archive is expanded there.
   -h, --help                 Display this help and exit.
@@ -33,13 +32,9 @@ fi
 opts="$(getopt -n "$PROGRAM_NAME" -l prefix:,source-dir:,clobber-source-dir,help -- h "$@")"
 eval set -- "$opts"
 
-expect_rest_args=no
 while (( $# > 0 )); do
   arg="$1"
   shift
-  if [[ $expect_rest_args == yes ]]; then
-    die_with_user_error "$PROGRAM_NAME" "An invalid argument \`$arg'."
-  fi
   case "$arg" in
   --prefix)
     if (( $# == 0 )); then
@@ -64,37 +59,40 @@ while (( $# > 0 )); do
     exit 0
     ;;
   --)
-    expect_rest_args=yes
+    if (( $# > 0 )); then
+      die_with_user_error "$PROGRAM_NAME" "An invalid argument \`$1'."
+    fi
+    break
     ;;
   *)
     die_with_user_error "$PROGRAM_NAME" "An invalid argument \`$arg'."
     ;;
   esac
 done
-unset expect_rest_args
 
 configure_options=()
 
-if [[ ${prefix+DEFINED} == DEFINED ]]; then
-  configure_options+=("--prefix=$prefix")
+if [[ ${prefix-NOT-DEFINED} == NOT-DEFINED ]]; then
+  prefix=/usr/local
 fi
+configure_options+=("--prefix=$prefix")
 
 temp_dir="$(mktemp -d)" \
   || die_with_runtime_error "$PROGRAM_NAME" "Failed to create a temporary directory."
 push_rollback_command "rm -rf \"$temp_dir\""
 
-: "${source_dir=$temp_dir/src}"
+if [[ ${source_dir-NOT-DEFINED} == NOT-DEFINED ]]; then
+  source_dir="$prefix/src/libbacktrace"
+fi
 if [[ -z $source_dir ]]; then
   die_with_user_error "$PROGRAM_NAME" "An invalid value \`$source_dir' for \`--source-dir' option."
 fi
 if [[ $(readlink -m "$source_dir") != $(cd "$temp_dir" >/dev/null && readlink -m "$source_dir") ]]; then
-  die_with_user_error "$PROGRAM_NAME" "A relative path \`$source_dir' for \`--source-dir' option, but is expected to be an absolute one."
+  die_with_user_error "$PROGRAM_NAME" "A relative path \`$source_dir' is specified for \`--source-dir' option, but is expected to be an absolute one."
 fi
 
-: "${clobber_source_dir=no}"
-
 if [[ -e $source_dir ]]; then
-  case "$clobber_source_dir" in
+  case "${clobber_source_dir-no}" in
   yes)
     rm -rf "$source_dir"
     ;;
@@ -115,12 +113,20 @@ mkdir -p "$source_dir_prefix" \
   || die_with_runtime_error "$PROGRAM_NAME" "Failed to \`git clone' libbacktrace repository."
 
 build_dir="$temp_dir/build"
-mkdir -p "$build_dir"
+mkdir "$build_dir"
 
-(cd "$build_dir" && "$source_dir/configure" --with-pic "${configure_options[@]}") \
+(cd "$build_dir"
+ "$source_dir/configure" --with-pic ${configure_options[@]+"${configure_options[@]}"}) \
   || die_with_runtime_error "$PROGRAM_NAME" "Failed to \`configure' libbacktrace."
 
-(cd "$build_dir" && make -j $(nproc) ) \
+make_options=()
+
+# Check whether this script is (directly or indirectly) called from `make'.
+if ! declare -p MAKEFLAGS 2>/dev/null | grep -Eq '^declare -x MAKEFLAGS='; then
+  make_options+=(-j -l "$(nproc)")
+fi
+
+(cd "$build_dir" && make ${make_options[@]+"${make_options[@]}"}) \
   || die_with_runtime_error "$PROGRAM_NAME" "Failed to \`make' libbacktrace."
 
 (cd "$build_dir" && make check) \
