@@ -1,0 +1,261 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script_dir="$(readlink -e "${BASH_SOURCE[0]}")"
+script_dir="$(dirname "$script_dir")"
+common_sh_path="$(readlink -e "$script_dir/../bin/common.sh")"
+. "$common_sh_path"
+unset common_sh_path
+
+PROGRAM_NAME=configure
+
+function print_usage ()
+{
+  cat <<'EOF'
+Usage: configure [OPTION]...
+Configure ICU4C.
+
+  --source-dir=<DIR>         The source directory (mandatory).
+  --build-dir=<DIR>          The build directory (mandatory).
+  --build-type=(debug|release) Select to build whether debug or release
+                               libraries (default: release).
+  --platform=<PLATFORM>      Select the host platform (mandatory).
+  --prefix=<PREFIX>          Pass `--prefix=<PREFIX>' on to ICU4C
+                             `runConfigureICU' script (default: `/usr/local').
+  --with-std=(11|14|17)      Select the C++ language standard.
+  --with-asan                Build with AddressSanitizer instrumentation.
+  --with-ubsan               Build with UndefinedBehaviorSanitizer
+                             instrumentation.
+  --with-tsan                Build with ThreadSanitizer instrumentation.
+  --with-libstdc++-debug-mode Build with libstdc++ debug mode.
+  -h, --help                 Display this help and exit.
+EOF
+}
+
+if getopt -T; (( $? != 4 )); then
+  die_with_runtime_error "$PROGRAM_NAME" "\`getopt' is not an enhanced version."
+fi
+opts="$(getopt -n "$PROGRAM_NAME" -l source-dir:,build-dir:,build-type:,platform:,prefix:,with-std:,with-asan,with-ubsan,with-tsan,with-libstdc++-debug-mode,help -- h "$@")"
+eval set -- "$opts"
+
+while (( $# > 0 )); do
+  arg="$1"
+  shift
+  case "$arg" in
+  --source-dir)
+    if (( $# == 0 )); then
+      die_with_logic_error "$PROGRAM_NAME"
+    fi
+    source_dir="$1"
+    shift
+    ;;
+  --build-dir)
+    if (( $# == 0 )); then
+      die_with_logic_error "$PROGRAM_NAME"
+    fi
+    build_dir="$1"
+    shift
+    ;;
+  --build-type)
+    if (( $# == 0 )); then
+      die_with_logic_error "$PROGRAM_NAME"
+    fi
+    build_type="$1"
+    shift
+    ;;
+  --platform)
+    if (( $# == 0 )); then
+      die_with_logic_error "$PROGRAM_NAME"
+    fi
+    platform="$1"
+    shift
+    ;;
+  --prefix)
+    if (( $# == 0 )); then
+      die_with_logic_error "$PROGRAM_NAME"
+    fi
+    prefix="$1"
+    shift
+    ;;
+  --with-std)
+    if (( $# == 0 )); then
+      die_with_logic_error "$PROGRAM_NAME"
+    fi
+    with_std="$1"
+    shift
+    ;;
+  --with-asan)
+    with_asan=yes
+    ;;
+  --with-ubsan)
+    with_ubsan=yes
+    ;;
+  --with-tsan)
+    with_tsan=yes
+    ;;
+  --with-libstdc++-debug-mode)
+    with_libstdcxx_debug_mode=yes
+    ;;
+  -h|--help)
+    set +x
+    print_usage
+    exit 0
+    ;;
+  --)
+    if (( $# > 0 )); then
+      die_with_user_error "$PROGRAM_NAME" "An invalid argument \`$1'."
+    fi
+    break
+    ;;
+  *)
+    die_with_user_error "$PROGRAM_NAME" "An invalid argument \`$arg'."
+    ;;
+  esac
+done
+
+cppflags=()
+cflags=()
+cxxflags=()
+ldflags=()
+configure_options=()
+
+temp_dir="$(mktemp -d)" \
+  || die_with_runtime_error "$PROGRAM_NAME" "Failed to create a temporary directory."
+push_rollback_command "rm -rf \"$temp_dir\""
+
+if [[ ${source_dir-NOT-DEFINED} == NOT-DEFINED ]]; then
+  die_with_user_error "$PROGRAM_NAME" "\`--source-dir' option is mandatory."
+fi
+if [[ -z $source_dir ]]; then
+  die_with_user_error "$PROGRAM_NAME" "An invalid value \`$source_dir' for \`--source-dir' option."
+fi
+if [[ $(readlink -m "$source_dir") != $(cd "$temp_dir" >/dev/null && readlink -m "$source_dir") ]]; then
+  die_with_user_error "$PROGRAM_NAME" "A relative path \`$source_dir' is specified for \`--source-dir' option, but is expected to be an absolute one."
+fi
+
+if [[ ${build_dir-NOT-DEFINED} == NOT-DEFINED ]]; then
+  die_with_user_error "$PROGRAM_NAME" "\`--build-dir' option is mandatory."
+fi
+if [[ -z $build_dir ]]; then
+  die_with_user_error "$PROGRAM_NAME" "An invalid value \`$build_dir' for \`--build-dir' option."
+fi
+if [[ $(readlink -m "$build_dir") != $(cd "$temp_dir" >/dev/null && readlink -m "$build_dir") ]]; then
+  die_with_user_error "$PROGRAM_NAME" "A relative path \`$build_dir' is specified for \`--build-dir' option, but is expected to be an absolute one."
+fi
+
+if [[ ${build_type-NOT-DEFINED} == NOT-DEFINED ]]; then
+  build_type=release
+fi
+case "$build_type" in
+debug)
+  configure_options+=(--enable-debug --disable-release)
+  ;;
+release)
+  ;;
+*)
+  die_with_user_error "$PROGRAM_NAME" "An invalid value \`$build_type' for \`--build-type' option."
+  ;;
+esac
+
+if [[ ${platform-NOT-DEFINED} == NOT-DEFINED ]]; then
+  die_with_user_error "$PROGRAM_NAME" "\`--platform' option is mandatory."
+fi
+configure_options+=("$platform")
+
+if [[ ${prefix-NOT-DEFINED} == NOT-DEFINED ]]; then
+  prefix=/usr/local
+fi
+configure_options+=("--prefix=$prefix")
+
+if [[ ${with_std+DEFINED} == DEFINED ]]; then
+  case "$with_std" in
+  11)
+    cxxflags+=(-std=c++11)
+    ;;
+  14)
+    cxxflags+=(-std=c++14)
+    ;;
+  17)
+    cxxflags+=(-std=c++17)
+    ;;
+  *)
+    die_with_user_error "$PROGRAM_NAME" "An invalid value \`$with_std' for \`--with-std' option."
+    ;;
+  esac
+fi
+
+if [[ ${with_asan+DEFINED} == DEFINED ]]; then
+  case "$with_asan" in
+  yes)
+    cflags+=(-fsanitize=address)
+    cxxflags+=(-fsanitize=address)
+    ldflags+=(-fsanitize=address)
+    ;;
+  *)
+    die_with_logic_error "$PROGRAM_NAME"
+    ;;
+  esac
+fi
+
+if [[ ${with_ubsan+DEFINED} == DEFINED ]]; then
+  case "$with_ubsan" in
+  yes)
+    cflags+=(-fsanitize=undefined)
+    cxxflags+=(-fsanitize=undefined)
+    ldflags+=(-fsanitize=undefined)
+    ;;
+  *)
+    die_with_logic_error "$PROGRAM_NAME"
+    ;;
+  esac
+fi
+
+if [[ ${with_tsan+DEFINED} == DEFINED ]]; then
+  case "$with_tsan" in
+  yes)
+    cflags+=(-fsanitize=thread)
+    cxxflags+=(-fsanitize=thread)
+    ldflags+=(-fsanitize=thread)
+    ;;
+  *)
+    die_with_logic_error "$PROGRAM_NAME"
+    ;;
+  esac
+fi
+
+if [[ ${with_libstdcxx_debug_mode+DEFINED} == DEFINED ]]; then
+  case "$with_libstdcxx_debug_mode" in
+  yes)
+    cppflags+=(-D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC)
+    ;;
+  *)
+    die_with_logic_error "$PROGRAM_NAME"
+    ;;
+  esac
+fi
+
+env_vars=()
+
+if (( ${#cppflags[@]} > 0 )); then
+  env_vars+=("CPPFLAGS=${cppflags[*]}")
+fi
+if (( ${#cflags[@]} > 0 )); then
+  env_vars+=("CFLAGS=${cflags[*]}")
+fi
+if (( ${#cxxflags[@]} > 0 )); then
+  env_vars+=("CXXFLAGS=${cxxflags[*]}")
+fi
+if (( ${#ldflags[@]} > 0 )); then
+  env_vars+=("LDFLAGS=${ldflags[*]}")
+fi
+
+# `runConfigureICU <PLATFORM> VAR=VAL' does not work if `VAL' has a space.
+# Therefore, pass `VAR=VAL' on to ICU4C's configure script via environment
+# variable.
+(cd "$build_dir"
+ env                                                  \
+   ${env_vars[@]+"${env_vars[@]}"}                    \
+   "$source_dir/source/runConfigureICU"               \
+   ${configure_options[@]+"${configure_options[@]}"}) \
+  || die_with_runtime_error "$PROGRAM_NAME" "Failed to execute \`runConfigureICU'."
