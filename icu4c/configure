@@ -23,7 +23,13 @@ Configure ICU4C.
   --platform=<PLATFORM>      Select the host platform (mandatory).
   --prefix=<PREFIX>          Pass `--prefix=<PREFIX>' on to ICU4C
                              `runConfigureICU' script (default: `/usr/local').
-  --with-std=(11|14|17)      Select the C++ language standard.
+  --enable-<FEATURE>[=(yes|no)] Include <FEATURE> unless `no' is set.
+  --disable-<FEATURE>        Do not include <FEATURE> (same as
+                             `--enable-<FEATURE>=no').
+  --enable-shared            Build shared libraries (default: `yes').
+  --enable-static            Build static libraries (default: `no').
+  --c++-standard=(11|14|17)  Select the C++ language standard to compile
+                             library files.
   --with-asan                Build with AddressSanitizer instrumentation.
   --with-ubsan               Build with UndefinedBehaviorSanitizer
                              instrumentation.
@@ -36,7 +42,7 @@ EOF
 if getopt -T; (( $? != 4 )); then
   die_with_runtime_error "$PROGRAM_NAME" "\`getopt' is not an enhanced version."
 fi
-opts="$(getopt -n "$PROGRAM_NAME" -l source-dir:,build-dir:,build-type:,platform:,prefix:,with-std:,with-asan,with-ubsan,with-tsan,with-libstdc++-debug-mode,help -- h "$@")"
+opts="$(getopt -n "$PROGRAM_NAME" -l source-dir:,build-dir:,build-type:,platform:,prefix:,enable-shared::,disable-shared,enable-static::,disable-static,c++-standard:,with-asan,with-ubsan,with-tsan,with-libstdc++-debug-mode,help -- h "$@")"
 eval set -- "$opts"
 
 while (( $# > 0 )); do
@@ -78,11 +84,37 @@ while (( $# > 0 )); do
     prefix="$1"
     shift
     ;;
-  --with-std)
+  --enable-shared)
     if (( $# == 0 )); then
       die_with_logic_error "$PROGRAM_NAME"
     fi
-    with_std="$1"
+    enable_shared="$1"
+    shift
+    if [[ -z $enable_shared ]]; then
+      enable_shared=yes
+    fi
+    ;;
+  --disable-shared)
+    enable_shared=no
+    ;;
+  --enable-static)
+    if (( $# == 0 )); then
+      die_with_logic_error "$PROGRAM_NAME"
+    fi
+    enable_static="$1"
+    shift
+    if [[ -z $enable_static ]]; then
+      enable_static=yes
+    fi
+    ;;
+  --disable-static)
+    enable_static=no
+    ;;
+  --c++-standard)
+    if (( $# == 0 )); then
+      die_with_logic_error "$PROGRAM_NAME"
+    fi
+    cxx_standard="$1"
     shift
     ;;
   --with-asan)
@@ -168,8 +200,32 @@ if [[ ${prefix-NOT-DEFINED} == NOT-DEFINED ]]; then
 fi
 configure_options+=("--prefix=$prefix")
 
-if [[ ${with_std+DEFINED} == DEFINED ]]; then
-  case "$with_std" in
+case "${enable_shared-yes}" in
+yes)
+  configure_options+=(--enable-shared)
+  ;;
+no)
+  configure_options+=(--disable-shared)
+  ;;
+*)
+  die_with_user_error "An invalid value \`$enable_shared' for \`--enable-shared' option."
+  ;;
+esac
+
+case "${enable_static-no}" in
+yes)
+  configure_options+=(--enable-static)
+  ;;
+no)
+  configure_options+=(--disable-static)
+  ;;
+*)
+  die_with_user_error "An invalid value \`$enable_static' for \`--enable-static' option."
+  ;;
+esac
+
+if [[ ${cxx_standard+DEFINED} == DEFINED ]]; then
+  case "$cxx_standard" in
   11)
     cxxflags+=(-std=c++11)
     ;;
@@ -180,7 +236,7 @@ if [[ ${with_std+DEFINED} == DEFINED ]]; then
     cxxflags+=(-std=c++17)
     ;;
   *)
-    die_with_user_error "$PROGRAM_NAME" "An invalid value \`$with_std' for \`--with-std' option."
+    die_with_user_error "$PROGRAM_NAME" "An invalid value \`$cxx_standard' for \`--c++-standard' option."
     ;;
   esac
 fi

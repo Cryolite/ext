@@ -35,7 +35,7 @@ while (( $# > 0 )); do
 done
 set -- ${new_args[@]+"${new_args[@]}"}
 unset new_args
-if [[ ${debug-no} == yes ]]; then
+if [[ ${debug-no} == yes || ${VERBOSE+DEFINED} == DEFINED ]]; then
   set -x
 fi
 unset debug

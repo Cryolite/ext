@@ -86,7 +86,7 @@ if [[ ${version-NOT-DEFINED} == NOT-DEFINED ]]; then
   version="$(curl -fLsS "$URL_PREFIX"                                     \
                | grep -Eo 'gcc-[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+/' \
                | grep -Eo '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+'      \
-               | sort -V                                                  \
+               | LANG=C.UTF-8 sort -Vu                                    \
                | tail -n 1)" \
     || die_with_runtime_error "$PROGRAM_NAME" "Failed to guess GCC latest version."
   if [[ ! $version =~ ^[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+$ ]]; then

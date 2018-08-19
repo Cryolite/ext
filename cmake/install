@@ -85,8 +85,7 @@ if [[ ${version-NOT-DEFINED} == NOT-DEFINED ]]; then
   version="$(curl -fLsS 'https://cmake.org/files/LatestRelease/'                    \
                | grep -Eo 'cmake-[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+\.tar\.gz' \
                | grep -Eo '[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+'                \
-               | sort -V                                                            \
-               | uniq                                                               \
+               | LANG=C.UTF-8 sort -Vu                                              \
                | tail -n 1)" \
     || die_with_runtime_error "$PROGRAM_NAME" "Failed to guess CMake latest version."
   if [[ ! $version =~ ^[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+$ ]]; then
