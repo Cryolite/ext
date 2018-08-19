@@ -13,10 +13,10 @@ PROGRAM_NAME=download
 function print_usage ()
 {
   cat <<'EOF'
-Usage: install [OPTION]...
+Usage: download [OPTION]...
 Download ICU4C source tree.
 
-  --version=<VERSION>        The version of ICU4C to install (default: the
+  --version=<VERSION>        The version of ICU4C to download (default: the
                              latest release version).
   --source-dir=<DIR>         The source directory (mandatory).
   --clobber-source-dir       Delete the source directory before the source
@@ -76,11 +76,11 @@ if [[ ${version-NOT-DEFINED} == NOT-DEFINED ]]; then
                | grep -Eo '^release-[[:digit:]]+-[[:digit:]]+(-[[:digit:]]+)?/$' \
                | grep -Eo '[[:digit:]]+-[[:digit:]]+(-[[:digit:]]+)?'            \
                | tr - .                                                          \
-               | sort -V                                                         \
+               | LANG=C.UTF-8 sort -Vu                                           \
                | tail -n 1)" \
-    || die_with_runtime_error "$PROGRAM_NAME" "Failed to guess ICU4C latest version."
+    || die_with_runtime_error "$PROGRAM_NAME" "Failed to guess ICU4C latest release version."
   if [[ ! $version =~ ^[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)?$ ]]; then
-    die_with_runtime_error "$PROGRAM_NAME" "Failed to guess ICU4C latest version."
+    die_with_runtime_error "$PROGRAM_NAME" "Failed to guess ICU4C latest release version."
   fi
 fi
 if [[ ! $version =~ ^[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)?$ ]]; then
@@ -128,7 +128,7 @@ for key_server in "${key_servers[@]}"; do
   timeout 30 gpg --homedir "$temp_dir/.gnupg" --batch --keyserver "$key_server" --recv-keys "${key_ids[@]}" && break
 done
 
-tarball_name="icu4c-$(echo "$version" | tr . _)-src.tgz"
+tarball_name="icu4c-$(tr . _ <<<"$version")-src.tgz"
 
 (cd "$temp_dir" && curl -fLsSo "$tarball_name" "https://ssl.icu-project.org/files/icu4c/$version/$tarball_name") \
   || die_with_runtime_error "$PROGRAM_NAME" "Failed to download \`$tarball_name'."
