@@ -311,7 +311,7 @@ fi
 # `runConfigureICU <PLATFORM> VAR=VAL' does not work if `VAL' has a space.
 # Therefore, pass `VAR=VAL' on to ICU4C's configure script via environment
 # variable.
-(cd "$build_dir" || exit $?;
+(cd "$build_dir" || exit $?
  env                                                  \
    ${env_vars[@]+"${env_vars[@]}"}                    \
    "$source_dir/source/runConfigureICU"               \

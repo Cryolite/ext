@@ -172,7 +172,7 @@ rm "$source_dir"/*.tar.*
 build_dir="$temp_dir/build"
 mkdir "$build_dir"
 
-(cd "$build_dir" || exit $?;
+(cd "$build_dir" || exit $?
  "$source_dir/configure"                             \
    --disable-multilib                                \
    --enable-languages=c,c++                          \
