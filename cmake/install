@@ -145,13 +145,13 @@ done
 tarball_basename="cmake-$version"
 tarball_name="$tarball_basename.tar.gz"
 
-(cd "$temp_dir"
+(cd "$temp_dir" || exit $?;
  curl -fLsSo "$tarball_name" "https://cmake.org/files/LatestRelease/$tarball_name") \
   || die_with_runtime_error "$PROGRAM_NAME" "Failed to download \`$tarball_name'."
-(cd "$temp_dir"
+(cd "$temp_dir" || exit $?;
  curl -fLsSo "$tarball_basename-SHA-256.txt" "https://cmake.org/files/LatestRelease/$tarball_basename-SHA-256.txt") \
   || die_with_runtime_error "$PROGRAM_NAME" "Failed to download \`$tarball_basename-SHA-256.txt'."
-(cd "$temp_dir"
+(cd "$temp_dir" || exit $?;
  curl -fLsSo "$tarball_basename-SHA-256.txt.asc" "https://cmake.org/files/LatestRelease/$tarball_basename-SHA-256.txt.asc") \
   || die_with_runtime_error "$PROGRAM_NAME" "Failed to download \`$tarball_basename-SHA-256.txt.asc'."
 
@@ -164,7 +164,7 @@ gpg                                             \
   || die_with_runtime_error "$PROGRAM_NAME" "Failed to verify the signature in \`$tarball_basename-SHA-256.txt.asc'."
 rm "$temp_dir/$tarball_basename-SHA-256.txt.asc"
 
-(cd "$temp_dir"
+(cd "$temp_dir" || exit $?;
  grep -E "[[:space:]]$tarball_name"'$' "$tarball_basename-SHA-256.txt" | sha256sum -c) \
   || die_with_runtime_error "$PROGRAM_NAME" "Failed to verify the message digest in \`$tarball_basename-SHA-256.txt'."
 rm "$temp_dir/$tarball_basename-SHA-256.txt"

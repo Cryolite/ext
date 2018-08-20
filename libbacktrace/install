@@ -115,7 +115,7 @@ mkdir -p "$source_dir_prefix" \
 build_dir="$temp_dir/build"
 mkdir "$build_dir"
 
-(cd "$build_dir"
+(cd "$build_dir" || exit $?;
  "$source_dir/configure" --with-pic ${configure_options[@]+"${configure_options[@]}"}) \
   || die_with_runtime_error "$PROGRAM_NAME" "Failed to \`configure' libbacktrace."
 

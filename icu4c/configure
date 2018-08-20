@@ -175,6 +175,8 @@ fi
 if [[ $(readlink -m "$build_dir") != $(cd "$temp_dir" >/dev/null && readlink -m "$build_dir") ]]; then
   die_with_user_error "$PROGRAM_NAME" "A relative path \`$build_dir' is specified for \`--build-dir' option, but is expected to be an absolute one."
 fi
+mkdir -p "$build_dir" \
+  || die_with_runtime_error "$PROGRAM_NAME" "Failed to create the build directory \`$build_dir'."
 
 if [[ ${build_type-NOT-DEFINED} == NOT-DEFINED ]]; then
   build_type=release
@@ -309,7 +311,7 @@ fi
 # `runConfigureICU <PLATFORM> VAR=VAL' does not work if `VAL' has a space.
 # Therefore, pass `VAR=VAL' on to ICU4C's configure script via environment
 # variable.
-(cd "$build_dir"
+(cd "$build_dir" || exit $?;
  env                                                  \
    ${env_vars[@]+"${env_vars[@]}"}                    \
    "$source_dir/source/runConfigureICU"               \
