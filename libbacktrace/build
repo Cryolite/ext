@@ -8,13 +8,13 @@ common_sh_path="$(readlink -e "$script_dir/../bin/common.sh")"
 . "$common_sh_path"
 unset common_sh_path
 
-PROGRAM_NAME=install
+PROGRAM_NAME=build
 
 function print_usage ()
 {
   cat <<'EOF'
-Usage: install [OPTION]...
-Install libbacktrace.
+Usage: build [OPTION]...
+Build libbacktrace.
 
   --build-dir=<DIR>          The build directory (mandatory).
   -h, --help                 Display this help and exit.
@@ -69,5 +69,12 @@ if [[ $(readlink -m "$build_dir") != $(cd "$temp_dir" >/dev/null && readlink -m 
   die_with_user_error "$PROGRAM_NAME" "A relative path \`$build_dir' is specified for \`--build-dir' option, but is expected to be an absolute one."
 fi
 
-(cd "$build_dir" && make install) \
-  || die_with_runtime_error "$PROGRAM_NAME" "Failed to \`make install' libbacktrace."
+make_options=()
+
+# Check whether this script is (directly or indirectly) called from `make'.
+if ! declare -p MAKEFLAGS 2>/dev/null | grep -Eq '^declare -x MAKEFLAGS='; then
+  make_options+=(-j -l "$(nproc)")
+fi
+
+(cd "$build_dir" && make ${make_options[@]+"${make_options[@]}"}) \
+  || die_with_runtime_error "$PROGRAM_NAME" "Failed to \`make' libbacktrace."
