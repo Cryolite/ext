@@ -13,28 +13,25 @@ PROGRAM_NAME=configure
 function print_usage ()
 {
   cat <<'EOF'
-Usage: configure [OPTION]...
+Usage: configure [OPTION]... --platform=<PLATFORM> -- [CONFIGURE_OPTIONS]...
 Configure ICU4C.
 
   --source-dir=<DIR>         The source directory (mandatory).
   --build-dir=<DIR>          The build directory (mandatory).
-  --build-type=(debug|release) Select to build whether debug or release
-                               libraries (default: release).
-  --platform=<PLATFORM>      Select the host platform (mandatory).
-  --prefix=<PREFIX>          Pass `--prefix=<PREFIX>' on to ICU4C
-                             `runConfigureICU' script (default: `/usr/local').
-  --enable-<FEATURE>[=(yes|no)] Include <FEATURE> unless `no' is set.
-  --disable-<FEATURE>        Do not include <FEATURE> (same as
-                             `--enable-<FEATURE>=no').
-  --enable-shared            Build shared libraries (default: `yes').
-  --enable-static            Build static libraries (default: `no').
-  --c++-standard=(11|14|17)  Select the C++ language standard to compile
-                             library files.
-  --with-asan                Build with AddressSanitizer instrumentation.
-  --with-ubsan               Build with UndefinedBehaviorSanitizer
-                             instrumentation.
-  --with-tsan                Build with ThreadSanitizer instrumentation.
-  --with-libstdc++-debug-mode Build with libstdc++ debug mode.
+  --enable-debug             Pass `--enable-debug' on to ICU4C
+                             `runConfigureICU' script.
+  --disable-release          Pass `--disable-release' on to ICU4C
+                             `runConfigureICU' script.
+  --platform=<PLATFORM>      Pass <PLATFORM> on to ICU4C `runConfigureICU'
+                             script (mandatory).
+  --cc=<CC>                  Pass `CC=<CC>' on to `runConfigureICU' script.
+  --cflags=<CFLAGS>          Pass `CFLAGS=<CFLAGS>' on to `runConfigureICU'
+                             script.
+  --cxx=<CXX>                Pass `CXX=<CXX>' on to `runConfigureICU' script.
+  --cxxflags=<CXXFLAGS>      Pass `CXXFLAGS=<CXXFLAGS>' on to
+                             `runConfigureICU' script.
+  --ldflags=<LDFLAGS>        Pass `LDFLAGS=<LDFLAGS>' on to `runConfigureICU'
+                             script.
   -h, --help                 Display this help and exit.
 EOF
 }
@@ -42,7 +39,7 @@ EOF
 if getopt -T; (( $? != 4 )); then
   die_with_runtime_error "$PROGRAM_NAME" "\`getopt' is not an enhanced version."
 fi
-opts="$(getopt -n "$PROGRAM_NAME" -l source-dir:,build-dir:,build-type:,platform:,prefix:,enable-shared::,disable-shared,enable-static::,disable-static,c++-standard:,with-asan,with-ubsan,with-tsan,with-libstdc++-debug-mode,help -- h "$@")"
+opts="$(getopt -n "$PROGRAM_NAME" -l source-dir:,build-dir:,enable-debug,disable-release,platform:,cc:,cflags:,cxx:,cxxflags:,ldflags:,help -- h "$@")"
 eval set -- "$opts"
 
 while (( $# > 0 )); do
@@ -63,12 +60,11 @@ while (( $# > 0 )); do
     build_dir="$1"
     shift
     ;;
-  --build-type)
-    if (( $# == 0 )); then
-      die_with_logic_error "$PROGRAM_NAME"
-    fi
-    build_type="$1"
-    shift
+  --enable-debug)
+    enable_debug=yes
+    ;;
+  --disable-release)
+    disable_release=yes
     ;;
   --platform)
     if (( $# == 0 )); then
@@ -77,57 +73,40 @@ while (( $# > 0 )); do
     platform="$1"
     shift
     ;;
-  --prefix)
+  --cc)
     if (( $# == 0 )); then
       die_with_logic_error "$PROGRAM_NAME"
     fi
-    prefix="$1"
+    cc="$1"
     shift
     ;;
-  --enable-shared)
+  --cflags)
     if (( $# == 0 )); then
       die_with_logic_error "$PROGRAM_NAME"
     fi
-    enable_shared="$1"
+    cflags="$1"
     shift
-    if [[ -z $enable_shared ]]; then
-      enable_shared=yes
-    fi
     ;;
-  --disable-shared)
-    enable_shared=no
-    ;;
-  --enable-static)
+  --cxx)
     if (( $# == 0 )); then
       die_with_logic_error "$PROGRAM_NAME"
     fi
-    enable_static="$1"
+    cxx="$1"
     shift
-    if [[ -z $enable_static ]]; then
-      enable_static=yes
-    fi
     ;;
-  --disable-static)
-    enable_static=no
-    ;;
-  --c++-standard)
+  --cxxflags)
     if (( $# == 0 )); then
       die_with_logic_error "$PROGRAM_NAME"
     fi
-    cxx_standard="$1"
+    cxxflags="$1"
     shift
     ;;
-  --with-asan)
-    with_asan=yes
-    ;;
-  --with-ubsan)
-    with_ubsan=yes
-    ;;
-  --with-tsan)
-    with_tsan=yes
-    ;;
-  --with-libstdc++-debug-mode)
-    with_libstdcxx_debug_mode=yes
+  --ldflags)
+    if (( $# == 0 )); then
+      die_with_logic_error "$PROGRAM_NAME"
+    fi
+    ldflags="$1"
+    shift
     ;;
   -h|--help)
     set +x
@@ -146,49 +125,44 @@ while (( $# > 0 )); do
   esac
 done
 
-cppflags=()
-cflags=()
-cxxflags=()
-ldflags=()
 configure_options=()
-
-temp_dir="$(mktemp -d)" \
-  || die_with_runtime_error "$PROGRAM_NAME" "Failed to create a temporary directory."
-push_rollback_command "rm -rf \"$temp_dir\""
 
 if [[ ${source_dir-NOT-DEFINED} == NOT-DEFINED ]]; then
   die_with_user_error "$PROGRAM_NAME" "\`--source-dir' option is mandatory."
 fi
-if [[ -z $source_dir ]]; then
-  die_with_user_error "$PROGRAM_NAME" "An invalid value \`$source_dir' for \`--source-dir' option."
-fi
-if [[ $(readlink -m "$source_dir") != $(cd "$temp_dir" >/dev/null && readlink -m "$source_dir") ]]; then
+if ! is_absolute_path "$source_dir"; then
   die_with_user_error "$PROGRAM_NAME" "A relative path \`$source_dir' is specified for \`--source-dir' option, but is expected to be an absolute one."
 fi
 
 if [[ ${build_dir-NOT-DEFINED} == NOT-DEFINED ]]; then
   die_with_user_error "$PROGRAM_NAME" "\`--build-dir' option is mandatory."
 fi
-if [[ -z $build_dir ]]; then
-  die_with_user_error "$PROGRAM_NAME" "An invalid value \`$build_dir' for \`--build-dir' option."
-fi
-if [[ $(readlink -m "$build_dir") != $(cd "$temp_dir" >/dev/null && readlink -m "$build_dir") ]]; then
+if ! is_absolute_path "$build_dir"; then
   die_with_user_error "$PROGRAM_NAME" "A relative path \`$build_dir' is specified for \`--build-dir' option, but is expected to be an absolute one."
 fi
+
 mkdir -p "$build_dir" \
   || die_with_runtime_error "$PROGRAM_NAME" "Failed to create the build directory \`$build_dir'."
 
-if [[ ${build_type-NOT-DEFINED} == NOT-DEFINED ]]; then
-  build_type=release
-fi
-case "$build_type" in
-debug)
-  configure_options+=(--enable-debug --disable-release)
+case "${enable_debug-no}" in
+yes)
+  configure_options+=(--enable-debug)
   ;;
-release)
+no)
   ;;
 *)
-  die_with_user_error "$PROGRAM_NAME" "An invalid value \`$build_type' for \`--build-type' option."
+  die_with_logic_error "$PROGRAM_NAME"
+  ;;
+esac
+
+case "${disable_release-no}" in
+yes)
+  configure_options+=(--disable-release)
+  ;;
+no)
+  ;;
+*)
+  die_with_logic_error "$PROGRAM_NAME"
   ;;
 esac
 
@@ -197,115 +171,22 @@ if [[ ${platform-NOT-DEFINED} == NOT-DEFINED ]]; then
 fi
 configure_options+=("$platform")
 
-if [[ ${prefix-NOT-DEFINED} == NOT-DEFINED ]]; then
-  prefix=/usr/local
-fi
-configure_options+=("--prefix=$prefix")
-
-case "${enable_shared-yes}" in
-yes)
-  configure_options+=(--enable-shared)
-  ;;
-no)
-  configure_options+=(--disable-shared)
-  ;;
-*)
-  die_with_user_error "An invalid value \`$enable_shared' for \`--enable-shared' option."
-  ;;
-esac
-
-case "${enable_static-no}" in
-yes)
-  configure_options+=(--enable-static)
-  ;;
-no)
-  configure_options+=(--disable-static)
-  ;;
-*)
-  die_with_user_error "An invalid value \`$enable_static' for \`--enable-static' option."
-  ;;
-esac
-
-if [[ ${cxx_standard+DEFINED} == DEFINED ]]; then
-  case "$cxx_standard" in
-  11)
-    cxxflags+=(-std=c++11)
-    ;;
-  14)
-    cxxflags+=(-std=c++14)
-    ;;
-  17)
-    cxxflags+=(-std=c++17)
-    ;;
-  *)
-    die_with_user_error "$PROGRAM_NAME" "An invalid value \`$cxx_standard' for \`--c++-standard' option."
-    ;;
-  esac
-fi
-
-if [[ ${with_asan+DEFINED} == DEFINED ]]; then
-  case "$with_asan" in
-  yes)
-    cflags+=(-fsanitize=address)
-    cxxflags+=(-fsanitize=address)
-    ldflags+=(-fsanitize=address)
-    ;;
-  *)
-    die_with_logic_error "$PROGRAM_NAME"
-    ;;
-  esac
-fi
-
-if [[ ${with_ubsan+DEFINED} == DEFINED ]]; then
-  case "$with_ubsan" in
-  yes)
-    cflags+=(-fsanitize=undefined)
-    cxxflags+=(-fsanitize=undefined)
-    ldflags+=(-fsanitize=undefined)
-    ;;
-  *)
-    die_with_logic_error "$PROGRAM_NAME"
-    ;;
-  esac
-fi
-
-if [[ ${with_tsan+DEFINED} == DEFINED ]]; then
-  case "$with_tsan" in
-  yes)
-    cflags+=(-fsanitize=thread)
-    cxxflags+=(-fsanitize=thread)
-    ldflags+=(-fsanitize=thread)
-    ;;
-  *)
-    die_with_logic_error "$PROGRAM_NAME"
-    ;;
-  esac
-fi
-
-if [[ ${with_libstdcxx_debug_mode+DEFINED} == DEFINED ]]; then
-  case "$with_libstdcxx_debug_mode" in
-  yes)
-    cppflags+=(-D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC)
-    ;;
-  *)
-    die_with_logic_error "$PROGRAM_NAME"
-    ;;
-  esac
-fi
-
 env_vars=()
 
-if (( ${#cppflags[@]} > 0 )); then
-  env_vars+=("CPPFLAGS=${cppflags[*]}")
+if [[ ${cc+DEFINED} == DEFINED ]]; then
+  env_vars+=("CC=$cc")
 fi
-if (( ${#cflags[@]} > 0 )); then
-  env_vars+=("CFLAGS=${cflags[*]}")
+if [[ ${cflags+DEFINED} == DEFINED ]]; then
+  env_vars+=("CFLAGS=$cflags")
 fi
-if (( ${#cxxflags[@]} > 0 )); then
-  env_vars+=("CXXFLAGS=${cxxflags[*]}")
+if [[ ${cxx+DEFINED} == DEFINED ]]; then
+  env_vars+=("CXX=$cxx")
 fi
-if (( ${#ldflags[@]} > 0 )); then
-  env_vars+=("LDFLAGS=${ldflags[*]}")
+if [[ ${cxxflags+DEFINED} == DEFINED ]]; then
+  env_vars+=("CXXFLAGS=$cxxflags")
+fi
+if [[ ${ldflags+DEFINED} == DEFINED ]]; then
+  env_vars+=("LDFLAGS=$ldflags")
 fi
 
 # `runConfigureICU <PLATFORM> VAR=VAL' does not work if `VAL' has a space.

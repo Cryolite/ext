@@ -55,17 +55,10 @@ while (( $# > 0 )); do
   esac
 done
 
-temp_dir="$(mktemp -d)" \
-  || die_with_runtime_error "$PROGRAM_NAME" "Failed to create a temporary directory."
-push_rollback_command "rm -rf \"$temp_dir\""
-
 if [[ ${build_dir-NOT-DEFINED} == NOT-DEFINED ]]; then
   die_with_user_error "$PROGRAM_NAME" "\`--build-dir' option is mandatory."
 fi
-if [[ -z $build_dir ]]; then
-  die_with_user_error "$PROGRAM_NAME" "An invalid value \`$build_dir' for \`--build-dir' option."
-fi
-if [[ $(readlink -m "$build_dir") != $(cd "$temp_dir" >/dev/null && readlink -m "$build_dir") ]]; then
+if ! is_absolute_path "$build_dir"; then
   die_with_user_error "$PROGRAM_NAME" "A relative path \`$build_dir' is specified for \`--build-dir' option, but is expected to be an absolute one."
 fi
 

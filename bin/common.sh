@@ -1,5 +1,5 @@
 # This Bash file is not designed to be called directly, but rather is read by
-# `source` Bash builtin command in the very beginning of another Bash script.
+# `source` Bash builtin command at the very beginning of another Bash script.
 
 EXT_ROOT_DIR="$(readlink -e "${BASH_SOURCE[0]}")"
 EXT_ROOT_DIR="$(dirname "$EXT_ROOT_DIR")"
@@ -73,6 +73,38 @@ function die_with_runtime_error ()
   set +x
   print_error_message "$1: error: $2"
   exit 1
+}
+
+function is_absolute_path ()
+{
+  if (( $# > 1 )); then
+    set +x
+    print_error_message \
+      "common.sh: is_absolute_path: error: Too many arguments."
+    exit 1
+  fi
+  if (( $# < 1 )); then
+    set +x
+    print_error_message \
+      "common.sh: is_absolute_path: error: Too few argument."
+    exit 1
+  fi
+
+  if [[ -z $1 ]]; then
+    return 1
+  fi
+
+  local temp_dir="$(mktemp -d)" \
+    || die_with_runtime_error "common.sh" "Failed to create a temporary \
+directory."
+  local lhs="$(cd "$temp_dir" >/dev/null && readlink -m "$1")" \
+    || { rmdir "$temp_dir"; die_with_runtime_error "common.sh" "Failed to \
+execute \`readlink -m'."; }
+  rmdir "$temp_dir"
+  unset temp_dir
+  local rhs="$(readlink -m "$1")" \
+    || die_with_runtime_error "common.sh" "Failed to execute \`readlink -m'."
+  [[ $lhs == $rhs ]]
 }
 
 rollback_stack=()

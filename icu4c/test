@@ -8,13 +8,13 @@ common_sh_path="$(readlink -e "$script_dir/../bin/common.sh")"
 . "$common_sh_path"
 unset common_sh_path
 
-PROGRAM_NAME=install
+PROGRAM_NAME=test
 
 function print_usage ()
 {
   cat <<'EOF'
-Usage: install [OPTION]...
-Install ICU4C.
+Usage: test [OPTION]...
+Test ICU4C.
 
   --build-dir=<DIR>          The build directory (mandatory).
   -h, --help                 Display this help and exit.
@@ -55,6 +55,13 @@ while (( $# > 0 )); do
   esac
 done
 
+make_args=()
+
+# Check whether this script is (directly or indirectly) called from `make'.
+if ! declare -p MAKEFLAGS 2>/dev/null | grep -Eq '^declare -x MAKEFLAGS='; then
+  make_args+=(-j -l "$(nproc)")
+fi
+
 if [[ ${build_dir-NOT-DEFINED} == NOT-DEFINED ]]; then
   die_with_user_error "$PROGRAM_NAME" "\`--build-dir' option is mandatory."
 fi
@@ -62,5 +69,5 @@ if ! is_absolute_path "$build_dir"; then
   die_with_user_error "$PROGRAM_NAME" "A relative path \`$build_dir' is specified for \`--build-dir' option, but is expected to be an absolute one."
 fi
 
-(cd "$build_dir" && make install) \
-  || die_with_runtime_error "$PROGRAM_NAME" "Failed to \`make install' ICU4C."
+(cd "$build_dir" && make ${make_args[@]+"${make_args[@]}"} check) \
+  || die_with_runtime_error "$PROGRAM_NAME" "Failed to \`make check' ICU4C."

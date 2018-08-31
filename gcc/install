@@ -14,15 +14,12 @@ URL_PREFIX='https://ftpmirror.gnu.org/gcc/'
 function print_usage ()
 {
   cat <<'EOF'
-Usage: install [OPTION]...
+Usage: install [OPTION]... -- [CONFIGURE_OPTION]...
 Install GCC.
 
   --version=<VERSION>        The version of GCC to install (default: the
                              latest release version).
-  --prefix=<PREFIX>          Pass `--prefix=<PREFIX>' on to GCC `configure'
-                             script (default: `/usr/local').
-  --source-dir=<DIR>         The source directory (default:
-                             `<PREFIX>/src/gcc').
+  --source-dir=<DIR>         The source directory (mandatory).
   --clobber-source-dir       Delete the source directory before the source
                              archive is expanded there.
   -h, --help                 Display this help and exit.
@@ -32,7 +29,7 @@ EOF
 if getopt -T; (( $? != 4 )); then
   die_with_runtime_error "$PROGRAM_NAME" "\`getopt' is not an enhanced version."
 fi
-opts="$(getopt -n "$PROGRAM_NAME" -l version:,prefix:,source-dir:,clobber-source-dir,help -- h "$@")"
+opts="$(getopt -n "$PROGRAM_NAME" -l version:,source-dir:,clobber-source-dir,help -- h "$@")"
 eval set -- "$opts"
 
 while (( $# > 0 )); do
@@ -44,13 +41,6 @@ while (( $# > 0 )); do
       die_with_logic_error "$PROGRAM_NAME"
     fi
     version="$1"
-    shift
-    ;;
-  --prefix)
-    if (( $# == 0 )); then
-      die_with_logic_error "$PROGRAM_NAME"
-    fi
-    prefix="$1"
     shift
     ;;
   --source-dir)
@@ -69,9 +59,7 @@ while (( $# > 0 )); do
     exit 0
     ;;
   --)
-    if (( $# > 0 )); then
-      die_with_user_error "$PROGRAM_NAME" "An invalid argument \`$1'."
-    fi
+    configure_options=("$@")
     break
     ;;
   *)
@@ -79,8 +67,6 @@ while (( $# > 0 )); do
     ;;
   esac
 done
-
-configure_options=()
 
 if [[ ${version-NOT-DEFINED} == NOT-DEFINED ]]; then
   version="$(curl -fLsS "$URL_PREFIX"                                     \
@@ -97,22 +83,14 @@ if [[ ! $version =~ ^[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+$ ]]; then
   die_with_user_error "$PROGRAM_NAME" "An invalid value \`$version' for \`--version' option."
 fi
 
-if [[ ${prefix-NOT-DEFINED} == NOT-DEFINED ]]; then
-  prefix=/usr/local
-fi
-configure_options+=("--prefix=$prefix")
-
 temp_dir="$(mktemp -d)" \
   || die_with_runtime_error "$PROGRAM_NAME" "Failed to create a temporary directory."
 push_rollback_command "rm -rf \"$temp_dir\""
 
 if [[ ${source_dir-NOT-DEFINED} == NOT-DEFINED ]]; then
-  source_dir="$prefix/src/gcc"
+  die_with_user_error "$PROGRAM_NAME" "\`--source-dir' option is mandatory."
 fi
-if [[ -z $source_dir ]]; then
-  die_with_user_error "$PROGRAM_NAME" "An invalid value \`$source_dir' for \`--source-dir' option."
-fi
-if [[ $(readlink -m "$source_dir") != $(cd "$temp_dir" >/dev/null && readlink -m "$source_dir") ]]; then
+if ! is_absolute_path "$source_dir"; then
   die_with_user_error "$PROGRAM_NAME" "A relative path \`$source_dir' is specified for \`--source-dir' option, but is expected to be an absolute one."
 fi
 
@@ -129,6 +107,7 @@ if [[ -e $source_dir ]]; then
     ;;
   esac
 fi
+
 mkdir -p "$source_dir" \
   || die_with_runtime_error "$PROGRAM_NAME" "Failed to create the source directory \`$source_dir'."
 
@@ -172,11 +151,7 @@ rm "$source_dir"/*.tar.*
 build_dir="$temp_dir/build"
 mkdir "$build_dir"
 
-(cd "$build_dir" || exit $?
- "$source_dir/configure"                             \
-   --disable-multilib                                \
-   --enable-languages=c,c++                          \
-   ${configure_options[@]+"${configure_options[@]}"}) \
+(cd "$build_dir" && "$source_dir/configure" ${configure_options[@]+"${configure_options[@]}"}) \
   || die_with_runtime_error "$PROGRAM_NAME" "Failed to \`configure' GCC."
 
 make_options=()

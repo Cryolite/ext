@@ -94,10 +94,7 @@ push_rollback_command "rm -rf \"$temp_dir\""
 if [[ ${source_dir-NOT-DEFINED} == NOT-DEFINED ]]; then
   die_with_user_error "$PROGRAM_NAME" "\`--source-dir' option is mandatory."
 fi
-if [[ -z $source_dir ]]; then
-  die_with_user_error "$PROGRAM_NAME" "An invalid value \`$source_dir' for \`--source-dir' option."
-fi
-if [[ $(readlink -m "$source_dir") != $(cd "$temp_dir" >/dev/null && readlink -m "$source_dir") ]]; then
+if ! is_absolute_path "$source_dir"; then
   die_with_user_error "$PROGRAM_NAME" "A relative path \`$source_dir' is specified for \`--source-dir' option, but is expected to be an absolute one."
 fi
 
@@ -114,6 +111,7 @@ if [[ -e $source_dir ]]; then
     ;;
   esac
 fi
+
 mkdir -p "$source_dir" \
   || die_with_runtime_error "$PROGRAM_NAME" "Failed to create the source directory \`$source_dir'."
 
